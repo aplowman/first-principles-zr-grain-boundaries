@@ -2,11 +2,12 @@
 
 TODO: 
   - Add section describing the `parameters/` folder.
+  - Add meaning of `-ghost` in structure codes.
 
 This repository demonstrates the supporting Python code and input/output data files for the following manuscripts:
 
-1. Zr GB properties...
-2. Effect of defects in Zr GBs...
+1. First Principles Analysis of Zirconium Grain Boundaries
+2. Embrittlement of Zirconium Grain Boundaries
 
 The easiest way to explore both the code and data is to use Binder, by clicking the link above.
 
