@@ -4,6 +4,8 @@ TODO:
   - Add section describing the `parameters/` folder.
   - Add meaning of `-ghost` in structure codes.
 
+## Introduction
+
 This repository demonstrates the supporting Python code and input/output data files for the following manuscripts:
 
 1. First Principles Analysis of Zirconium Grain Boundaries
