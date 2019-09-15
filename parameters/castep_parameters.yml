@@ -1,0 +1,28 @@
+cell:
+  kpoint_mp_spacing:         0.04
+param:
+  cut_off_energy:           360 eV
+  elec_energy_tol:          1e-7
+  geom_energy_tol:          1e-6
+  geom_force_tol:           1e-2
+  geom_max_iter:            200
+  geom_method:              LBFGS
+  max_scf_cycles:           200
+  metals_method:            DM
+  mixing_scheme:            Pulay
+  num_backup_iter:          5
+  opt_strategy:             speed
+  smearing_width:           0.1 eV
+  task:                     GeometryOptimisation
+  write_cell_structure:     True
+  xc_functional:            PBE
+  write_formatted_density:  True
+  calculate_densdiff:       True
+seedname: sim
+cell_constraints:
+  fix_lengths: abc
+  fix_angles: abc
+  lengths_equal: null
+  angles_equal: null
+atom_constraints:
+  fix_xy_idx: all

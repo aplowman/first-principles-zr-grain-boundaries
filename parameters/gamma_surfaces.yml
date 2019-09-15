@@ -1,0 +1,10 @@
+# Grid sizes for gamma surface simulations in LAMMPS:
+s7-tlA-gb:
+  grid: [12, 18]
+  expansions: [-1, 0, 1, 2]
+s7-tlB-gb:
+  grid: [12, 30]
+  expansions: [-1, 0, 1, 2]
+s13-tlA-gb:
+  grid: [12, 24]
+  expansions: [-1, 0, 1, 2]

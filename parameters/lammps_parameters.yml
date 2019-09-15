@@ -1,0 +1,17 @@
+parameters:
+  - 'units        metal'
+  - 'dimension    3'
+  - 'boundary     p p p'
+  - 'box          tilt large'
+atom_style: atomic
+atoms_file: atoms.lammps
+dump_dt: 100
+interactions: [
+  'pair_style eam/fs',
+  'pair_coeff * * "<<POTENTIAL_PATH>>" Zr'
+]
+cell_constraints:
+  fix_lengths: abc
+  fix_angles: abc
+atom_constraints:
+  fix_xy_idx: all
