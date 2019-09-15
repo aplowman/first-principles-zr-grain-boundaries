@@ -103,6 +103,8 @@ venv.bak/
 # mypy
 .mypy_cache/
 
+.vscode/
+
 # This directory contains code used to set up the data directories from the original
 # archive source and should be excluded:
 transfer_sim_data.ipynb
