@@ -102,3 +102,8 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+# This directory contains code used to set up the data directories from the original
+# archive source and should be excluded:
+transfer_sim_data.ipynb
+simulation_directories.yml
