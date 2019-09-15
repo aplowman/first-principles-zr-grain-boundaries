@@ -1,0 +1,10 @@
+numpy
+atomistic==0.3.0
+castep-parse==0.1.4
+lammps-parse==0.1.0
+ruamel.yaml
+autopep8
+rope
+ipykernel
+pylint
+humanize
