@@ -1,4 +1,4 @@
-[Binder](Binder)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/aplowman/first-principles-zr-grain-boundaries/master)
 
 TODO: 
   - Add section describing the `parameters/` folder.
