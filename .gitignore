@@ -109,3 +109,6 @@ venv.bak/
 # archive source and should be excluded:
 transfer_sim_data.ipynb
 simulation_directories.yml
+
+DEV_README.md
+environment.yml
