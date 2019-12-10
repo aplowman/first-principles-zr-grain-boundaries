@@ -108,6 +108,7 @@ csl_repeats:
 
 relative_shift:
   s7-tlA: [0.25, 0.50]
+  s7-tlB: [0.00, 0.40]
   s13-tlA: [0.50, 0.50]
   s19-tlA: [0.00, 0.20]
   s31-tlA: [0.50, 0.50]
@@ -123,6 +124,10 @@ boundary_vac:
   s7-tlA:    
     thickness: 0.18
     func: sigmoid    
+    sharpness: 1
+  s7-tlB:
+    thickness: 0.24
+    func: sigmoid
     sharpness: 1
   s13-tlA:
     thickness: 0.16    
