@@ -1,6 +1,8 @@
 import lzma
+import json
 from pathlib import Path
 from shutil import copy2
+from time import time
 from pprint import pprint
 
 import numpy as np
@@ -13,14 +15,17 @@ from atomistic.api.bicrystal import (
     surface_bicrystal_from_csl_vectors,
     bulk_bicrystal_from_csl_vectors
 )
-from atomistic.bicrystal import Bicrystal
-from castep_parse import read_cell_file, read_castep_file, read_geom_file
+from atomistic.atomistic import AtomisticSimulation
+from atomistic.bicrystal import Bicrystal, atomistic_simulation_from_bicrystal_parameters
+from castep_parse import (read_cell_file, read_castep_file, read_geom_file,
+                          read_relaxation, merge_cell_data, merge_geom_data)
 
 DEFAULT_DIRS_LIST_PATH = 'simulation_directories.yml'
 DEF_LAMMPS_FILE = 'parameters/lammps_parameters.yml'
 DEF_CASTEP_FILE = 'parameters/castep_parameters.yml'
 DEF_POT_PATH = 'data/potential/Zr_3.eam.fs'
 DEF_PARAMS_FILE = 'parameters/structural_parameters.yml'
+UNIT_CONV = 16.02176565
 
 
 def get_filtered_directory_size(path, sub_dirs=None, file_formats=None, recursive=False,
@@ -206,9 +211,9 @@ def get_castep_outputs(structure_code):
     cst = read_castep_file(cst_file)
     geom = read_geom_file(geom_file)
 
-    cst['geom'] = geom
+    out = merge_geom_data(cst, geom)
 
-    return cst
+    return out
 
 
 def get_simulated_bicrystal(structure_code, opt_idx=-1, parameters_file=DEF_PARAMS_FILE):
@@ -219,9 +224,14 @@ def get_simulated_bicrystal(structure_code, opt_idx=-1, parameters_file=DEF_PARA
         parameters = yaml.load(handle)
 
     sim_outputs = get_castep_outputs(structure_code)
-    atoms = sim_outputs['geom']['ions'][opt_idx]
-    species = sim_outputs['geom']['species'][sim_outputs['geom']['species_idx']]
-    supercell = sim_outputs['geom']['cells'][opt_idx]
+
+    species = sim_outputs['geom']['species']
+    supercell = sim_outputs['geom']['iterations'][opt_idx]['cell']
+    atoms = sim_outputs['geom']['iterations'][opt_idx]['atoms']
+
+    srt_idx1 = np.lexsort(atoms)
+    ss2_atoms_1 = atoms[:, srt_idx1]
+
     bicrystal = Bicrystal.from_atoms(
         atoms=atoms,
         species=species,
@@ -232,6 +242,9 @@ def get_simulated_bicrystal(structure_code, opt_idx=-1, parameters_file=DEF_PARA
         wrap=True,
     )
 
+    srt_idx2 = np.lexsort(bicrystal.atoms.coords)
+    ss2_atoms_2 = bicrystal.atoms.coords[:, srt_idx2]
+
     sup_type = structure_code.split('-')[2]
     if sup_type == 'b':
         bicrystal.meta['supercell_type'] = ['bulk', 'bulk_bicrystal']
@@ -239,6 +252,184 @@ def get_simulated_bicrystal(structure_code, opt_idx=-1, parameters_file=DEF_PARA
         bicrystal.meta['supercell_type'] = ['surface', 'surface_bicrystal']
 
     return bicrystal
+
+
+def get_simulation(structure_code, parameters_file=DEF_PARAMS_FILE):
+    'Get an AtomisticSimulation object from CASTEP simulation output files.'
+
+    yaml = YAML()
+    with Path(parameters_file).open(encoding='utf-8') as handle:
+        parameters = yaml.load(handle)
+
+    cstp_file_bytes = b''
+    cell_file_bytes = b''
+    geom_file_bytes = b''
+
+    structure_dir = Path('data/dft_sims').joinpath(structure_code)
+    if not structure_dir.is_dir():
+        msg = 'Cannot find simulation files for structure "{}"'.format(structure_code)
+        raise ValueError(msg)
+
+    if structure_dir.joinpath('0').is_dir():
+
+        # Need to combine results from multiple castep sim directories
+
+        print('-> Multiple directories.')
+
+        for j_idx, j in enumerate(structure_dir.glob('*')):
+
+            if j_idx == 0:
+                # Only want the first cell file
+                cell_path_j = j.joinpath('sim.cell.xz')
+                cell_file_bytes = decompress_file(cell_path_j)
+
+            cstp_path_j = j.joinpath('sim.castep.xz')
+            cstp_file_bytes += decompress_file(cstp_path_j)
+
+            geom_path_j = j.joinpath('sim.geom.xz')
+            if geom_path_j.is_file():
+                geom_file_bytes += decompress_file(geom_path_j)
+
+            # Special cases
+            # -------------
+            if structure_code == 's7-tlA-fs-b2':
+                # First castep file is corrupted, so ignore this and geom file.
+                if j_idx == 0:
+                    cstp_file_bytes = b''
+                    geom_file_bytes = b''
+
+            elif structure_code in ['s13-tlA-fs-a1+a2+a3', 's13-tlA-fs-a2']:
+                # First geom file only has many iters missing, so ignore first dir
+                if j_idx == 0:
+                    cstp_file_bytes = b''
+                    geom_file_bytes = b''
+
+            elif structure_code == 's13-tlA-fs-b2':
+                # First run from first dir is in .castep file but not in .geom file
+                if j_idx == 0:
+                    cstp_file_bytes = b''
+                    geom_file_bytes = b''
+
+    else:
+
+        cstp_path = structure_dir.joinpath('sim.castep.xz')
+        cstp_file_bytes = decompress_file(cstp_path)
+
+        cell_path = structure_dir.joinpath('sim.cell.xz')
+        cell_file_bytes = decompress_file(cell_path)
+
+        geom_path = structure_dir.joinpath('sim.geom.xz')
+        if geom_path.is_file():
+            geom_file_bytes = decompress_file(geom_path)
+
+    cell_dat = read_cell_file(cell_file_bytes)
+    cstp_dat = read_castep_file(cstp_file_bytes)
+    cstp_dat = merge_cell_data(cstp_dat, cell_dat)
+
+    if geom_file_bytes:
+        geom_dat = read_geom_file(geom_file_bytes)
+        cstp_dat = merge_geom_data(cstp_dat, geom_dat)
+
+    # Special cases
+    # -------------
+    if structure_code == 's7-tw-gb-ghost-23':
+        # Single point run repeated in .castep file
+        del cstp_dat['runs'][1]
+        del cstp_dat['SCF']['cycles'][1]
+        for k, v in cstp_dat['SCF']['energies'].items():
+            cstp_dat['SCF']['energies'][k] = v[0:1]
+
+    elif structure_code == 's19-tlA-gb':
+        # Only include up to geometry iteration 29 where dE/ion = 7.00487e-7 eV / ion
+        # After this, boundary seems to start to move (dislocation motion?).
+        cstp_dat['geom']['iterations'] = cstp_dat['geom']['iterations'][:30]
+
+    data = {}
+    species = cstp_dat['structure']['species']
+
+    if 'geom' in cstp_dat:
+
+        atoms = []
+        supercell = []
+        for geom_iter in cstp_dat['geom']['iterations']:
+
+            final_step = geom_iter['steps'][-1]
+            scf_idx = final_step['SCF_idx']
+            for en_name, en in cstp_dat['SCF']['energies'].items():
+                if en_name not in data:
+                    data[en_name] = [en[scf_idx]]
+                else:
+                    data[en_name].append(en[scf_idx])
+
+            if geom_iter.get('atoms') is not None:
+                atoms.append(geom_iter['atoms'])
+                supercell.append(geom_iter['cell'])
+            else:
+                print('no atoms in geom iter!')
+                if geom_iter['iter_num'] == 0:
+                    print('Warning: no atoms in geom iteration 0!')
+                    # First run was missing, so use `structure` key (from cell file):
+                    atoms.append(cstp_dat['structure']['atoms'])
+                    supercell.append(cstp_dat['structure']['supercell'])
+                else:
+                    # Iteration is missing from the .geom file (due to structure reversion)
+                    print('structure reversion?')
+                    atoms.append(atoms[-1])
+                    supercell.append(supercell[-1])
+
+    else:
+        data = cstp_dat['SCF']['energies']
+        atoms = [cstp_dat['structure']['atoms']]
+        supercell = [cstp_dat['structure']['supercell']]
+
+    # Convert to arrays:
+    atoms = np.array(atoms)
+
+    supercell = np.array(supercell)
+    for en_name in data:
+        data[en_name] = np.array(data[en_name])
+
+    # Make initial structure:
+    # bicrystal = Bicrystal.from_atoms(
+    #     atoms=np.copy(atoms[0]),
+    #     species=species,
+    #     supercell=supercell[0],
+    #     non_boundary_idx=2,
+    #     maintain_inv_sym=True,
+    #     overlap_tol=parameters['overlap_tol'],
+    #     wrap=True,
+    # )
+
+    # sim = AtomisticSimulation.from_bicrystal_parameters() -> but atomistic shouldn't 'know' about Bicrystal, so perhaps
+    # BicrystalSimulation is better.
+
+    sup_type = structure_code.split('-')[2]
+    meta = {}
+    if sup_type == 'b':
+        meta['supercell_type'] = ['bulk', 'bulk_bicrystal']
+    elif sup_type == 'fs':
+        meta['supercell_type'] = ['surface', 'surface_bicrystal']
+
+    sim = atomistic_simulation_from_bicrystal_parameters(
+        all_atoms=atoms,
+        all_supercells=supercell,
+        species=species,
+        data=data,
+        meta=meta,
+        non_boundary_idx=2,
+        maintain_inv_sym=True,
+        overlap_tol=parameters['overlap_tol'],
+        wrap=True,
+    )
+
+    # sim = AtomisticSimulation(
+    #     structure=bicrystal,
+    #     data=data,
+    #     atom_displacements=np.copy(atoms - atoms[0]),
+    #     supercell_displacements=np.copy(supercell - supercell[0]),
+    # )
+
+    return sim
 
 
 def get_lammps_parameters(potential_file=DEF_POT_PATH, parameters_file=DEF_LAMMPS_FILE,
@@ -364,3 +555,454 @@ def make_structure(structure_code, configuration='base', lattice_parameters='dft
         out = bulk_bicrystal_from_csl_vectors(**struct_params)
 
     return out
+
+
+def decode_structure_info(structure_code):
+
+    # TODO check values.
+    THETA = {
+        7: 21.79,
+        13: 27.80,
+        19: 13.1735511,
+        31: 17.90,
+    }
+
+    key_split = structure_code.split('-')
+    pristine_key = '-'.join(key_split[:3])
+    gb_type = '-'.join(key_split[:2])
+    sigma = int(key_split[0][1:])
+    misorientation = THETA[sigma]
+
+    info = {
+        'sigma': sigma,
+        'misorientation': misorientation,
+        'pristine_key': pristine_key,
+        'supercell_type': key_split[2],
+        'gb_type': gb_type,
+        'gb_plane': key_split[1],
+    }
+
+    return info
+
+
+def load_structures(json_path='dft_sims.json'):
+    'Load the structures and energies from a JSON file.'
+
+    with Path(json_path).open() as handle:
+        dft_sims = json.load(handle)
+
+    for structure_code in dft_sims:
+
+        dft_sims[structure_code]['structure']['atoms'] = np.array(
+            dft_sims[structure_code]['structure']['atoms'])
+
+        dft_sims[structure_code]['structure']['supercell'] = np.array(
+            dft_sims[structure_code]['structure']['supercell'])
+
+        dft_sims[structure_code]['structure']['species'] = np.array(
+            dft_sims[structure_code]['structure']['species'])
+
+        dft_sims[structure_code]['structure']['atom_site_geometries'] = unjsonified_site_geometries(
+            dft_sims[structure_code]['structure']['atom_site_geometries']
+        )
+
+        if 'final_structure' in dft_sims[structure_code]:
+            dft_sims[structure_code]['final_structure']['atoms'] = np.array(
+                dft_sims[structure_code]['final_structure']['atoms'])
+
+            dft_sims[structure_code]['final_structure']['supercell'] = np.array(
+                dft_sims[structure_code]['final_structure']['supercell'])
+
+            dft_sims[structure_code]['final_structure']['species'] = np.array(
+                dft_sims[structure_code]['final_structure']['species'])
+
+            dft_sims[structure_code]['final_structure']['atom_site_geometries'] = unjsonified_site_geometries(
+                dft_sims[structure_code]['final_structure']['atom_site_geometries']
+            )
+
+    return dft_sims
+
+
+def export_structures(json_path='dft_sims.json', log_path='collation_log.txt', exclude_structures=None,
+                      include_structures=None):
+    'Parse and export the structures and energies to a JSON file.'
+
+    dft_sims = collate_structures(log_path, exclude_structures=exclude_structures,
+                                  include_structures=include_structures)
+
+    with Path(json_path).open('w') as handle:
+        json.dump(dft_sims, handle, indent=2, sort_keys=True)
+
+    return json_path
+
+
+def get_bicrystal_thickness(supercell):
+    """Get bicrystal thickness in grain boundary normal direction."""
+
+    n_unit = np.array([[0, 0, 1]]).T
+    sup_nb = supercell[:, 2][:, None]
+    ein = np.einsum('ij,ij', sup_nb, n_unit)
+    return ein
+
+
+def jsonified_site_geometries(site_geoms, neighbour_keys=['area']):
+
+    out = {
+        'neighbours': [],
+        'volume': site_geoms['volume'].tolist(),
+    }
+
+    if 'interface_distance' in site_geoms:
+        out.update({'interface_distance': site_geoms['interface_distance'].tolist()})
+
+    for i in site_geoms['neighbours']:
+        out['neighbours'].append(
+            {k: v.tolist() for k, v in i.items() if k in neighbour_keys}
+        )
+
+    return out
+
+
+def unjsonified_site_geometries(site_geoms):
+
+    out = {
+        'neighbours': [],
+        'volume': np.array(site_geoms['volume']),
+    }
+
+    if 'interface_distance' in site_geoms:
+        out.update({'interface_distance': np.array(site_geoms['interface_distance'])})
+
+    for i in site_geoms['neighbours']:
+        out['neighbours'].append({k: np.array(v) for k, v in i.items()})
+
+    return out
+
+
+def collate_structures(log_path='collation_log.txt', exclude_structures=None, include_structures=None):
+
+    # Here we should invoke get_simulation to get an AtomisticSimulation object; and then
+    # save info from that object in JSON format.
+
+    if not exclude_structures:
+        exclude_structures = []
+
+    if not include_structures:
+        include_structures = []
+
+    log_path = Path(log_path)
+
+    count = 0
+    dft_sims = {}
+    t1 = time()
+
+    for i in Path('data/dft_sims').glob('*'):
+
+        structure_code = i.name
+
+        if include_structures:
+            if structure_code not in include_structures:
+                continue
+
+        if structure_code in exclude_structures:
+            continue
+
+        count += 1
+
+        print('________{:_<80s}'.format(structure_code))
+
+        sim = get_simulation(structure_code)
+
+        structure_info = decode_structure_info(structure_code)
+        structure_info.update({
+            'area': sim.structure.boundary_area,
+            'num_atoms': sim.structure.num_atoms,
+        })
+        if structure_info['supercell_type'] == 'gb':
+            structure_info.update({
+                'bicrystal_thickness': sim.structure.bicrystal_thickness,
+            })
+
+        initial_structure = sim.get_step(0, atom_site_geometries=True)['structure']
+        initial_structure.swap_crystal_sites()
+        sim_dict = {
+            'structure_info': structure_info,
+            'structure': {
+                'atoms': initial_structure.atoms.coords.tolist(),
+                'supercell': initial_structure.supercell.tolist(),
+                'species': initial_structure.atoms.species.tolist(),
+                'atom_site_geometries': jsonified_site_geometries(
+                    initial_structure.atom_site_geometries),
+            },
+            'data': {
+                'final_zero_energy': [sim.data['final_zero_energy'][0]],
+            },
+        }
+
+        if sim.num_steps > 1:
+            sim_dict['data']['final_zero_energy'].append(
+                sim.data['final_zero_energy'][-1])
+            final_structure = sim.get_step(-1, atom_site_geometries=True)['structure']
+            final_structure.swap_crystal_sites()
+            sim_dict.update({
+                'final_structure': {
+                    'atoms': final_structure.atoms.coords.tolist(),
+                    'supercell': final_structure.supercell.tolist(),
+                    'species': final_structure.atoms.species.tolist(),
+                    'atom_site_geometries': jsonified_site_geometries(
+                        final_structure.atom_site_geometries),
+                }
+            })
+
+        dft_sims.update({structure_code: sim_dict})
+        print()
+
+    t2 = time()
+    t_mins = (t2 - t1) / 60
+
+    print('{:_<88}'.format(''))
+    print('Collated results for {} structures in {:.2f} minutes.'.format(count, t_mins))
+    print('{:_<88}'.format(''))
+
+    return dft_sims
+
+
+def get_interplanar_spacing_data(DFT_sims, structure_code, step, add_one, bulk_val, average_by=None):
+
+    geoms = DFT_sims[structure_code]['final_structure']['atom_site_geometries']
+
+    int_dist = geoms['interface_distance']
+    int_dist *= -1                  # To match existing...
+    int_dist_srt = np.sort(int_dist)
+
+    if average_by:
+        int_dist_srt = np.mean(np.reshape(int_dist_srt, (-1, average_by)), axis=1)
+
+    w = np.where(int_dist_srt > 0)[0]
+    w2 = [w[0] - 1] + list(w)       # What happens here?
+
+    int_dist_pos = int_dist_srt[w2][::step]
+    int_dist_diff = np.diff(int_dist_pos)
+    int_dist_diff = int_dist_diff[:int(len(int_dist_diff)/2) + (1 if add_one else 0)]
+
+    x_range = [0, len(int_dist_diff) - 1]
+
+    out = {
+        'structure_code': structure_code,
+        'xrange': x_range,
+        'y': int_dist_diff,
+        'bulk_val': bulk_val,
+    }
+
+    return out
+
+
+def get_local_volume_change_data(DFT_sims, structure_code, vol_bulk):
+
+    final_structure = DFT_sims[structure_code]['final_structure']
+    geoms = final_structure['atom_site_geometries']
+
+    x = geoms['interface_distance']
+    y = geoms['volume']
+
+    x_srt_idx = np.argsort(x)
+    x = x[x_srt_idx]
+    y = y[x_srt_idx]
+
+    supercell = final_structure['supercell']
+    range_mag = supercell[2, 2] / 2
+    range_lims = [-range_mag/2, range_mag/2]
+
+    x_rangd = np.where(
+        np.logical_and(
+            x >= range_lims[0],
+            x <= range_lims[1],
+        )
+    )
+
+    x = x[x_rangd]
+    y = y[x_rangd]
+
+    # Percentage change in local volume:
+    y = 100 * (y - vol_bulk) / y
+
+    out = {
+        'structure_code': structure_code,
+        'vol_change': y,
+        'int_dist': x,
+        'vol_bulk': vol_bulk,
+    }
+
+    return out
+
+
+def get_coordination_change_data(DFT_sims, structure_code, area_threshold):
+
+    final_structure = DFT_sims[structure_code]['final_structure']
+    neighbours = final_structure['atom_site_geometries']['neighbours']
+    int_dist = final_structure['atom_site_geometries']['interface_distance']
+
+    x = int_dist
+    y = np.array([np.sum(i['area'] > area_threshold) for i in neighbours])
+
+    x_srt_idx = np.argsort(x)
+    x = x[x_srt_idx]
+    y = y[x_srt_idx]
+
+    supercell = final_structure['supercell']
+    range_mag = supercell[2, 2] / 2
+    range_lims = [-range_mag/2, range_mag/2]
+
+    x_rangd = np.where(
+        np.logical_and(
+            x >= range_lims[0],
+            x <= range_lims[1],
+        )
+    )
+
+    x = x[x_rangd]
+    y = y[x_rangd]
+
+    out = {
+        'structure_code': structure_code,
+        'coord': y,
+        'int_dist': x,
+    }
+
+    return out
+
+
+def get_interface_energy(interface_sim, bulk_sim):
+
+    bulk_ratio = (interface_sim['structure_info']
+                  ['num_atoms'] / bulk_sim['structure_info']['num_atoms'])
+    E_int = (interface_sim['data']['final_zero_energy'][-1] - bulk_ratio *
+             bulk_sim['data']['final_zero_energy'][-1]) / (2 * interface_sim['structure_info']['area'])
+    E_int *= UNIT_CONV
+    return E_int
+
+
+def get_all_interface_energies(DFT_sims, interface):
+
+    if interface not in ["gb", "fs"]:
+        raise ValueError('Interface must be one of "gb" or "fs".')
+
+    E_int = {}
+
+    # Search for pristine GBs:
+    for key, val in DFT_sims.items():
+
+        if key.endswith(interface):
+
+            # Find complimentary bulk sim:
+            bulk_key = key.split('-' + interface)[0] + '-b'
+
+            if bulk_key in DFT_sims:
+                E_int.update({
+                    key: get_interface_energy(val, DFT_sims[bulk_key])
+                })
+
+    return E_int
+
+
+def get_wsep(pristine_sim, defective_sim, fs_defective_sim):
+    """Calculate work of separation of GB or bulk supercell where, "defective"
+    supercells have one or zero defective interfaces.
+
+    Parameters
+    ----------
+    pristine_sim : dict
+        Represents the pristine GB/bulk supercell
+    defective_sim : dict
+        Represents the defective GB/bulk supercell
+    fs_defective_sim : dict
+        Represents the defective FS supercell
+
+    """
+
+    wos = pristine_sim['data']['final_zero_energy'][-1] + 2 * (
+        fs_defective_sim['data']['final_zero_energy'][-1] -
+        defective_sim['data']['final_zero_energy'][-1]
+    )
+
+    wos /= (2 * pristine_sim['structure_info']['area'])
+    wos *= UNIT_CONV
+
+    return wos
+
+
+def get_all_wsep(DFT_sims):
+
+    wsep_all = {}
+
+    # Search for GBs and Bulks:
+    for key, val in DFT_sims.items():
+
+        sup_type = val['structure_info']['supercell_type']
+
+        if sup_type in ['gb', 'b']:
+
+            # Get pristine GB/B key:
+            key_split = key.split('-')
+            prs_key = '-'.join(key_split[:3])
+
+            # Get "defective" FS key:
+            key_split_fs = list(key_split)
+            key_split_fs[2] = 'fs'
+            fs_def_key = '-'.join(key_split_fs)
+
+            if prs_key in DFT_sims and fs_def_key in DFT_sims:
+                wsep = get_wsep(DFT_sims[prs_key], val, DFT_sims[fs_def_key])
+                wsep_all.update({key: wsep})
+
+    map_vacancy_ghosts(wsep_all)
+
+    return wsep_all
+
+
+def map_vacancy_ghosts(wsep_all):
+    """Modify list of work of separations so that ghost vacancy keys are also
+    included.
+
+    If a calculation has only vacancy defects, then the work of separation of the
+    fully relaxed supercell is identical to that of the ghost system "C/C_s" as
+    defined in Lozovoi. Therefore, here, we add additional keys to `wsep_all`.
+    For example:
+
+    {
+        ...,
+        's7-tw-gb-v1':       `val1`,
+        's7-tw-fs-v1':       `val2`,
+        ...,
+    }
+
+    goes to
+
+    {
+        ...,
+        's7-tw-gb-v1':       `val1`,
+        's7-tw-gb-v1-ghost': `val1`,
+        's7-tw-fs-v1':       `val2`,
+        's7-tw-fs-v1-ghost': `val2`,        
+        ...,        
+    }
+
+    """
+    wsep_keys = list(wsep_all.keys())
+
+    for key in wsep_keys:
+
+        key_split = key.split('-')
+
+        only_vacancies = False
+        if len(key_split) > 3:
+            def_list = key_split[3].split('+')
+            is_vacancy = [i[0] == 'v' for i in def_list]
+            if all(is_vacancy):
+                only_vacancies = True
+
+        if only_vacancies:
+            new_key = '-'.join(key_split + ['ghost'])
+            wsep_all.update({
+                new_key: wsep_all[key]
+            })
