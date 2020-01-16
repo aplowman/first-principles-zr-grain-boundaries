@@ -1,9 +1,5 @@
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/aplowman/first-principles-zr-grain-boundaries/master)
 
-TODO: 
-  - Add section describing the `parameters/` folder.
-  - Add meaning of `-ghost` in structure codes.
-
 ## Introduction
 
 This repository demonstrates the supporting Python code and input/output data files for the following manuscripts:
