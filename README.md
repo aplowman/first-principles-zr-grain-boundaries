@@ -1,5 +1,7 @@
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/aplowman/first-principles-zr-grain-boundaries/master)
 
+[![DOI](https://zenodo.org/badge/203863663.svg)](https://zenodo.org/badge/latestdoi/203863663)
+
 ## Introduction
 
 This repository demonstrates the supporting Python code and input/output data files for the following manuscripts:
