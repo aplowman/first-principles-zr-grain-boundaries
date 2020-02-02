@@ -6,8 +6,9 @@
 
 This repository demonstrates the supporting Python code and input/output data files for the following manuscripts:
 
-1. First Principles Analysis of Zirconium Grain Boundaries
-2. Embrittlement of Zirconium Grain Boundaries
+1. A. J. Plowman and Christopher P. Race, '**A First Principles Study of Zirconium Grain Boundaries**', submitted to Physical Review Materials.
+2. A. J. Plowman and Christopher P. Race, '**A Density Functional Theory Study of Embrittlement of Zirconium Grain Boundaries by Fission Products**', in preparation.
+
 
 The easiest way to explore both the code and data is to use Binder, by clicking the link above.
 
