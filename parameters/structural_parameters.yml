@@ -2,7 +2,7 @@ lattice_system: &lattice_system hexagonal
 
 lattice_parameters:
   experimental: &lattice_parameters_exp
-    # Reference: W. M. Haynes, ed. CRC Handbook of Chemistry and Physics. 95th 
+    # Reference: W. M. Haynes, ed. CRC Handbook of Chemistry and Physics. 95th
     # ed. Boca Raton: CRC Press, 2014. 2704 pp. isbn: 978-1-4822-0867-2
     a: 3.2316
     c: 5.1475
@@ -31,14 +31,14 @@ motif: &motif
       - [1/3, 2/3]
       - [3/4, 1/4]
     labels:
-      species: [['Zr'], [0, 0]]
+      species: [["Zr"], [0, 0]]
   interstices:
     coords:
       - [0, 0]
       - [0, 0]
       - [0, 1/2]
     labels:
-      bulk_name: [['octahedral'], [0, 0]]
+      bulk_name: [["octahedral"], [0, 0]]
 
 crystal_structures:
   dft:
@@ -62,7 +62,7 @@ csl_vecs:
       - [0, 0, 1]
     - - [3, 4, 0]
       - [-1, 3, 0]
-      - [0, 0, 1]    
+      - [0, 0, 1]
   s19: &s19
     - - [5, 2, 0]
       - [3, 5, 0]
@@ -118,38 +118,38 @@ relative_shift:
 
 # Change overlapt_tol to <= 0.3 to successfully construct the Σ19 tilt A GB "base"
 # structure.
-overlap_tol: 1 
+overlap_tol: 0.3
 
 boundary_vac:
-  s7-tlA:    
+  s7-tlA:
     thickness: 0.18
-    func: sigmoid    
+    func: sigmoid
     sharpness: 1
   s7-tlB:
     thickness: 0.24
     func: sigmoid
     sharpness: 1
   s13-tlA:
-    thickness: 0.16    
-    func: sigmoid    
+    thickness: 0.16
+    func: sigmoid
     sharpness: 1
   s19-tlA:
     thickness: 0.17
     func: sigmoid
     sharpness: 1
   s31-tlA:
-    thickness: 0.21    
-    func: sigmoid    
+    thickness: 0.21
+    func: sigmoid
     sharpness: 1
   s7-tw:
     thickness: 0.10
-    func: sigmoid    
+    func: sigmoid
     sharpness: 1
   s13-tw:
     thickness: 0.09
-    func: sigmoid    
+    func: sigmoid
     sharpness: 1
   s19-tw:
     thickness: 0.10
-    func: sigmoid    
+    func: sigmoid
     sharpness: 1
