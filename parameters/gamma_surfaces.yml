@@ -8,3 +8,18 @@ s7-tlB-gb:
 s13-tlA-gb:
   grid: [12, 24]
   expansions: [-1, 0, 1, 2]
+s19-tlA-gb:
+  grid: [12, 30]
+  expansions: [-1, 0, 1, 2]
+s31-tlA-gb:
+  grid: [12, 38]
+  expansions: [-1, 0, 1, 2]
+s7-tw-gb:
+  grid: [21, 21]
+  expansions: [-1, 0, 1, 2]
+s13-tw-gb:
+  grid: [39, 39]
+  expansions: [-1, 0, 1, 2]
+s19-tw-gb:
+  grid: [57, 57]
+  expansions: [-1, 0, 1, 2]
