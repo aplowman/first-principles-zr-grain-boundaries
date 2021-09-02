@@ -1,0 +1,25 @@
+units        metal
+dimension    3
+boundary     p p p
+box          tilt large
+atom_style   atomic
+
+read_data    atoms.lammps
+
+pair_style eam/fs
+pair_coeff * * "C:\Users\adamj\dropbox\code_db\supporting_manuscript_code\first-principles-zr-grain-boundaries\data\potential\Zr_3.eam.fs" Zr
+
+
+compute peatom all pe/atom
+compute datom all displace/atom
+compute voratom all voronoi/atom
+
+thermo_style custom step atoms pe ke etotal fmax
+thermo_modify format float %20.10f
+thermo 1
+
+dump 1 all custom 100 dump.*.txt id type x y z c_peatom c_datom[1] c_datom[2] c_datom[3] c_datom[4] c_voratom[1] c_voratom[2]
+dump_modify 1 format line "%5d %5d %20.10f %20.10f %20.10f %20.10f %20.10f %20.10f %20.10f %20.10f %20.10f %5.f"
+
+min_style cg
+minimize 0.0 1.0e-6 10000 100000

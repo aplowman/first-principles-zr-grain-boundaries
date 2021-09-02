@@ -1,0 +1,103 @@
+LAMMPS (11 Aug 2017)
+OMP_NUM_THREADS environment is not set. Defaulting to 1 thread. (../comm.cpp:90)
+  using 1 OpenMP thread(s) per MPI task
+units        metal
+dimension    3
+boundary     p p p
+box          tilt large
+atom_style   atomic
+
+read_data    atoms.lammps
+  triclinic box = (0 0 0) to (11.6607 10.0985 31.2862) with tilt (5.83036 3e-015 3e-015)
+  1 by 1 by 1 MPI processor grid
+  reading atoms ...
+  156 atoms
+
+pair_style eam/fs
+pair_coeff * * "C:\Users\adamj\dropbox\code_db\supporting_manuscript_code\first-principles-zr-grain-boundaries\data\potential\Zr_3.eam.fs" Zr
+
+
+compute peatom all pe/atom
+compute datom all displace/atom
+compute voratom all voronoi/atom
+
+thermo_style custom step atoms pe ke etotal fmax
+thermo_modify format float %20.10f
+thermo 1
+
+dump 1 all custom 100 dump.*.txt id type x y z c_peatom c_datom[1] c_datom[2] c_datom[3] c_datom[4] c_voratom[1] c_voratom[2]
+dump_modify 1 format line "%5d %5d %20.10f %20.10f %20.10f %20.10f %20.10f %20.10f %20.10f %20.10f %20.10f %5.f"
+
+min_style cg
+minimize 0.0 1.0e-6 10000 100000
+WARNING: Using 'neigh_modify every 1 delay 0 check yes' setting during minimization (../min.cpp:168)
+Neighbor list info ...
+  update every 1 steps, delay 0 steps, check yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 9.6
+  ghost atom cutoff = 9.6
+  binsize = 4.8, bins = 4 3 7
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair eam/fs, perpetual
+      attributes: half, newton on
+      pair build: half/bin/newton/tri
+      stencil: half/bin/3d/newton/tri
+      bin: standard
+Per MPI rank memory allocation (min/avg/max) = 6.764 | 6.764 | 6.764 Mbytes
+Step Atoms PotEng KinEng TotEng Fmax 
+       0      156     -1029.1367705189         0.0000000000     -1029.1367705189         1.0848856463 
+       1      156     -1030.0599660117         0.0000000000     -1030.0599660117         0.1602361424 
+       2      156     -1030.1555596012         0.0000000000     -1030.1555596012         0.0756673953 
+       3      156     -1030.1837779826         0.0000000000     -1030.1837779826         0.0518669618 
+       4      156     -1030.1960129273         0.0000000000     -1030.1960129273         0.0213590354 
+       5      156     -1030.1983015040         0.0000000000     -1030.1983015040         0.0101360373 
+       6      156     -1030.1986989498         0.0000000000     -1030.1986989498         0.0031278603 
+       7      156     -1030.1987573051         0.0000000000     -1030.1987573051         0.0017169885 
+       8      156     -1030.1987710696         0.0000000000     -1030.1987710696         0.0008180738 
+       9      156     -1030.1987758075         0.0000000000     -1030.1987758075         0.0004922441 
+      10      156     -1030.1987772375         0.0000000000     -1030.1987772375         0.0003025169 
+      11      156     -1030.1987775295         0.0000000000     -1030.1987775295         0.0001185528 
+      12      156     -1030.1987775899         0.0000000000     -1030.1987775899         0.0000379488 
+      13      156     -1030.1987775958         0.0000000000     -1030.1987775958         0.0000147833 
+      14      156     -1030.1987775969         0.0000000000     -1030.1987775969         0.0000057657 
+      15      156     -1030.1987775971         0.0000000000     -1030.1987775971         0.0000033887 
+      16      156     -1030.1987775972         0.0000000000     -1030.1987775972         0.0000011767 
+      17      156     -1030.1987775972         0.0000000000     -1030.1987775972         0.0000005515 
+      18      156     -1030.1987775972         0.0000000000     -1030.1987775972         0.0000003131 
+      19      156     -1030.1987775972         0.0000000000     -1030.1987775972         0.0000001352 
+      20      156     -1030.1987775972         0.0000000000     -1030.1987775972         0.0000000544 
+Loop time of 0.0480001 on 1 procs for 20 steps with 156 atoms
+
+97.7% CPU use with 1 MPI tasks x 1 OpenMP threads
+
+Minimization stats:
+  Stopping criterion = force tolerance
+  Energy initial, next-to-last, final = 
+        -1029.13677052      -1030.1987776      -1030.1987776
+  Force two-norm initial, final = 4.3245 5.75645e-007
+  Force max component initial, final = 1.08489 5.44042e-008
+  Final line search alpha, max atom move = 1 5.44042e-008
+  Iterations, force evaluations = 20 39
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0.015982   | 0.015982   | 0.015982   |   0.0 | 33.30
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0.0019989  | 0.0019989  | 0.0019989  |   0.0 |  4.16
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 0.03002    |            |       | 62.54
+
+Nlocal:    156 ave 156 max 156 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:    2064 ave 2064 max 2064 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:    11556 ave 11556 max 11556 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 11556
+Ave neighs/atom = 74.0769
+Neighbor list builds = 0
+Dangerous builds = 0
+Total wall time: 0:00:00
