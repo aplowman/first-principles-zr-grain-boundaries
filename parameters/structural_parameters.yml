@@ -107,49 +107,94 @@ csl_repeats:
   s19-tw: [1, 1, 3]
 
 relative_shift:
-  s7-tlA: [0.25, 0.50]
-  s7-tlB: [0.00, 0.40]
-  s13-tlA: [0.50, 0.50]
-  s19-tlA: [0.00, 0.20]
-  s31-tlA: [0.50, 0.50]
-  s7-tw: [0, 0]
-  s13-tw: [0, 0]
-  s19-tw: [0, 0]
+  dft:
+    s7-tlA: [0.00, 0.50]
+    s7-tlB: [0.00, 0.40]
+    s13-tlA: [0.50, 0.50]
+    s19-tlA: [0.00, 0.20]
+    s31-tlA: [0.50, 0.50]
+    s7-tw: [0, 0]
+    s13-tw: [0, 0]
+    s19-tw: [0, 0]
+  eam:
+    s7-tlA: [0.25, 0.50]
+    s7-tlB: [0.00, 0.40]
+    s13-tlA: [0.50, 0.50]
+    s19-tlA: [0.00, 0.20]
+    s31-tlA: [0.50, 0.50]
+    s7-tw: [0, 0]
+    s13-tw: [0, 0]
+    s19-tw: [0, 0]
 
 # Change overlapt_tol to <= 0.3 to successfully construct the Σ19 tilt A GB "base"
 # structure.
 overlap_tol: 0.3
 
+# Minimum-energy GB expansions found from DFT:
 boundary_vac:
-  s7-tlA:
-    thickness: 0.18
-    func: sigmoid
-    sharpness: 1
-  s7-tlB:
-    thickness: 0.24
-    func: sigmoid
-    sharpness: 1
-  s13-tlA:
-    thickness: 0.16
-    func: sigmoid
-    sharpness: 1
-  s19-tlA:
-    thickness: 0.17
-    func: sigmoid
-    sharpness: 1
-  s31-tlA:
-    thickness: 0.21
-    func: sigmoid
-    sharpness: 1
-  s7-tw:
-    thickness: 0.10
-    func: sigmoid
-    sharpness: 1
-  s13-tw:
-    thickness: 0.09
-    func: sigmoid
-    sharpness: 1
-  s19-tw:
-    thickness: 0.10
-    func: sigmoid
-    sharpness: 1
+  dft:
+    s7-tlA:
+      thickness: 0.12 # 0.18 at the originally selected minimum translation of [0.25, 0.50] (i.e. that predicted by EAM but not by DFT)
+      func: sigmoid
+      sharpness: 1
+    s7-tlB:
+      thickness: 0.24
+      func: sigmoid
+      sharpness: 1
+    s13-tlA:
+      thickness: 0.16
+      func: sigmoid
+      sharpness: 1
+    s19-tlA:
+      thickness: 0.17
+      func: sigmoid
+      sharpness: 1
+    s31-tlA:
+      thickness: 0.21
+      func: sigmoid
+      sharpness: 1
+    s7-tw:
+      thickness: 0.10
+      func: sigmoid
+      sharpness: 1
+    s13-tw:
+      thickness: 0.09
+      func: sigmoid
+      sharpness: 1
+    s19-tw:
+      thickness: 0.10
+      func: sigmoid
+      sharpness: 1
+  eam:
+    s7-tlA:
+      thickness: 0.07
+      func: sigmoid
+      sharpness: 1
+    s7-tlB:
+      thickness: 0.18
+      func: sigmoid
+      sharpness: 1
+    s13-tlA:
+      thickness: 0.12
+      func: sigmoid
+      sharpness: 1
+    s19-tlA:
+      thickness: -0.04
+      func: sigmoid
+      sharpness: 1
+    s31-tlA:
+      thickness: 0.15
+      func: sigmoid
+      sharpness: 1
+    s7-tw:
+      thickness: 0.15
+      func: sigmoid
+      sharpness: 1
+    s13-tw:
+      thickness: 0.14
+      func: sigmoid
+      sharpness: 1
+    s19-tw:
+      thickness: 0.14
+      func: sigmoid
+      sharpness: 1
