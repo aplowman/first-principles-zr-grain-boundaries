@@ -20,6 +20,8 @@ from atomistic.bicrystal import Bicrystal, atomistic_simulation_from_bicrystal_p
 from castep_parse import (read_cell_file, read_castep_file, read_geom_file,
                           read_relaxation, merge_cell_data, merge_geom_data)
 from lammps_parse import read_lammps_output
+from plotly import graph_objects
+from plotly.colors import DEFAULT_PLOTLY_COLORS
 
 DEFAULT_DIRS_LIST_PATH = 'simulation_directories.yml'
 DEF_LAMMPS_FILE = 'parameters/lammps_parameters.yml'
@@ -27,6 +29,7 @@ DEF_CASTEP_FILE = 'parameters/castep_parameters.yml'
 DEF_POT_PATH = 'data/potential/Zr_3.eam.fs'
 DEF_PARAMS_FILE = 'parameters/structural_parameters.yml'
 UNIT_CONV = 16.02176565
+DEFAULT_WIDTH_VOLUME_CHANGE_LIMITS = [-2, 2]
 
 
 def get_filtered_directory_size(path, sub_dirs=None, file_formats=None, recursive=False,
@@ -873,14 +876,14 @@ def get_interplanar_spacing_data(DFT_sims, structure_code, step, add_one, bulk_v
     geoms = DFT_sims[structure_code]['final_structure']['atom_site_geometries']
 
     int_dist = geoms['interface_distance']
-    int_dist *= -1                  # To match existing...
+    int_dist *= -1
     int_dist_srt = np.sort(int_dist)
 
     if average_by:
         int_dist_srt = np.mean(np.reshape(int_dist_srt, (-1, average_by)), axis=1)
 
     w = np.where(int_dist_srt > 0)[0]
-    w2 = [w[0] - 1] + list(w)       # What happens here?
+    w2 = [w[0] - 1] + list(w)
 
     int_dist_pos = int_dist_srt[w2][::step]
     int_dist_diff = np.diff(int_dist_pos)
@@ -1107,3 +1110,807 @@ def map_vacancy_ghosts(wsep_all):
             wsep_all.update({
                 new_key: wsep_all[key]
             })
+
+
+def plot_vol_change(vol_change):
+    plot_data = []
+    for i in vol_change:
+        plot_data.extend([
+            {
+                'x': i['int_dist'],
+                'y': i['vol_change'],
+                'name': '{}'.format(i['structure_code']),
+                'mode': 'markers',
+            },        
+        ])
+
+    fig = graph_objects.FigureWidget(
+        data=plot_data,
+        layout={
+            'width': 600,
+            'height': 500,
+            'xaxis': {
+                'title': 'Distance from GB /Ang.',
+            },
+            'yaxis': {
+                'title': 'Change in local volume',
+            },        
+        }
+    )
+    return fig
+
+def plot_coordination(coord_dat):
+
+    plot_data = []
+    for i in coord_dat:
+        plot_data.extend([
+            {
+                'x': i['int_dist'],
+                'y': i['coord'],
+                'name': '{}'.format(i['structure_code']),
+                'mode': 'markers',
+            },
+        ])
+
+    fig = graph_objects.FigureWidget(
+        data=plot_data,
+        layout={
+            'width': 600,
+            'height': 500,
+            'xaxis': {
+                'title': 'Distance from GB /Ang.',
+            },
+            'yaxis': {
+                'title': 'Coordination',
+            },        
+        }
+    )
+    return fig
+
+def plot_interplanar_spacing_data(data):
+
+    plot_data = []
+    for i in data:
+        plot_data.extend([
+            {
+                'y': i['y'],
+                'name': '{}'.format(i['structure_code'])
+            },
+            {
+                'x': i['xrange'],
+                'y': [i['bulk_val']] * 2,
+                'cliponaxis': False,
+                'mode': 'lines',
+                'line': {
+                    'width': 1,
+                    'color': 'gray',
+                },      
+                'name': 'Bulk ({})'.format(i['structure_code']),
+            },        
+        ])
+
+    fig = graph_objects.FigureWidget(
+        data=plot_data,
+        layout={
+            'width': 600,
+            'height': 500,
+            'xaxis': {
+                'title': 'Layer',
+            },
+            'yaxis': {
+                'title': 'Interplanar spacing /Ang.',
+            },                
+        }
+    )
+    return fig
+
+def plot_GB_energies(DFT_sims, E_GB):
+
+    plot_dat = []
+    for structure_code, value in E_GB.items():
+        structure_info = DFT_sims[structure_code]['structure_info']
+        theta = structure_info['misorientation']
+        plot_dat.append({
+            'x': [theta],
+            'y': [value],
+            'name': structure_code
+        })
+    fig = graph_objects.FigureWidget(
+        data=plot_dat,
+        layout={
+            'width': 600,
+            'height': 500,
+            'xaxis': {
+                'title': 'Misorientation / deg.',
+            },
+            'yaxis': {
+                'title': 'E_GB / J/m^2',
+            },                
+        }
+    )
+    return fig
+
+def plot_FS_energies(DFT_sims, E_FS):
+
+    plot_dat = []
+    for structure_code, value in E_FS.items():
+        structure_info = DFT_sims[structure_code]['structure_info']
+        theta = structure_info['misorientation']
+        plot_dat.append({
+            'x': [theta],
+            'y': [value],
+            'name': structure_code
+        })
+    fig = graph_objects.FigureWidget(
+        data=plot_dat,
+        layout={
+            'width': 600,
+            'height': 500,
+            'xaxis': {
+                'title': 'Misorientation / deg.',
+            },
+            'yaxis': {
+                'title': 'E_FS / J/m^2',
+            },                
+        }
+    )
+    return fig
+
+def plot_works_of_separation(DFT_sims, W):
+
+    plot_dat = []
+    for structure_code, value in W.items():
+        structure_info = DFT_sims[structure_code]['structure_info']
+        theta = structure_info['misorientation']
+        plot_dat.append({
+            'x': [theta],
+            'y': [value],
+            'name': structure_code
+        })
+    fig = graph_objects.FigureWidget(
+        data=plot_dat,
+        layout={
+            'width': 600,
+            'height': 500,
+            'xaxis': {
+                'title': 'Misorientation / deg.',
+            },
+            'yaxis': {
+                'title': 'W_sep / J/m^2',
+            },                
+        }
+    )
+    return fig
+
+def get_GB_width(vol_change_i, width_vol_change_lims, range_lims):
+    in_gb_idx_DFT = np.where(np.abs(vol_change_i['vol_change']) >= width_vol_change_lims[1])[0]
+    out_gb_idx_DFT = np.where(np.abs(vol_change_i['vol_change']) < width_vol_change_lims[1])[0]
+
+    if len(in_gb_idx_DFT) > 0:
+
+        most_neg_gb = in_gb_idx_DFT[0]
+        least_neg_non_gb = most_neg_gb - 1
+        most_pos_gb = in_gb_idx_DFT[-1]
+        least_pos_non_gb = most_pos_gb + 1
+
+        if least_pos_non_gb > (len(vol_change_i['int_dist']) - 1):   
+            gb_width_upper = range_lims[1]
+        else:
+            gb_width_upper = (vol_change_i['int_dist'][least_pos_non_gb] + vol_change_i['int_dist'][most_pos_gb]) / 2
+
+        if least_neg_non_gb < 0:
+            gb_width_lower = range_lims[0]
+        else:
+            gb_width_lower = (vol_change_i['int_dist'][most_neg_gb] + vol_change_i['int_dist'][least_neg_non_gb]) / 2  
+
+        vol_change_sym = -gb_width_upper / gb_width_lower
+
+    else:
+        gb_width_upper = 0 
+        gb_width_lower = 0
+        vol_change_sym = 1
+
+    gb_width = gb_width_upper - gb_width_lower   
+
+    return gb_width, gb_width_lower, gb_width_upper
+
+def get_predicted_GB_widths(DFT_sims, vol_change_DFT, vol_change_EAM, width_vol_change_lims=None):
+    
+    width_vol_change_lims = width_vol_change_lims or DEFAULT_WIDTH_VOLUME_CHANGE_LIMITS
+    gb_widths_DFT = {}
+    gb_widths_EAM = {}
+
+    for vol_change_DFT_i in vol_change_DFT:
+        
+        code = vol_change_DFT_i['structure_code']
+        vol_change_EAM_i = [i for i in vol_change_EAM if i['structure_code'] == code][0]
+                    
+        range_mag = DFT_sims[code]['structure']['supercell'][2, 2,] / 2
+        range_lims = [-range_mag/2, range_mag/2]
+                
+        gb_width_DFT, gb_width_lower_DFT, gb_width_upper_DFT = get_GB_width(vol_change_DFT_i, width_vol_change_lims, range_lims)
+        gb_width_EAM, gb_width_lower_EAM, gb_width_upper_EAM = get_GB_width(vol_change_EAM_i, width_vol_change_lims, range_lims)    
+        
+        gb_widths_DFT[code] = (gb_width_DFT, gb_width_lower_DFT, gb_width_upper_DFT)
+        gb_widths_EAM[code] = (gb_width_EAM, gb_width_lower_EAM, gb_width_upper_EAM)
+
+    return gb_widths_DFT, gb_widths_EAM
+
+def write_manuscript_figures_coordination(DFT_sims, coord_change_dat_DFT, coord_change_dat_EAM):
+
+    pixels_per_unit = 4.1    
+    BULK_ALPHA_ZR_COORD = 12
+    figs = []
+    for coord_change_DFT_i in coord_change_dat_DFT:
+        
+        code = coord_change_DFT_i['structure_code']        
+        coord_change_EAM_i = [i for i in coord_change_dat_EAM if i['structure_code'] == code][0]
+                    
+        range_mag = DFT_sims[code]['structure']['supercell'][2, 2,] / 2
+        range_lims = [-range_mag/2, range_mag/2]
+            
+        margins = {
+            'l': 30,
+            'r': 10,
+            't': 10,
+            'b': 35,
+        }        
+        plot_width = (pixels_per_unit * range_mag) + margins['l'] + margins['r']
+        com_axis = {                
+            'linecolor': 'black',
+            'linewidth': 0.7,
+            'ticks': 'inside',
+            'tickwidth': 1,
+            'mirror': 'ticks',
+            'gridwidth': 1,
+            'showgrid': False,
+            'zeroline': False,
+            'tickformat': '.0f',
+        }    
+        
+        layout = {
+            'template': 'none',
+            'width': plot_width,
+            'showlegend': False,
+            'height': 145,
+            'margin': margins,
+            'xaxis': {
+                'range': range_lims,
+                'dtick': 5,
+                'tickangle': 0,
+                'title': {
+                    'text': r'\CCXLab{}',
+                    'font': {
+                        'size': 10,
+                    },
+                },
+                **com_axis,
+            },
+            'yaxis': {
+                'range': [9.5, 15.5],
+                **com_axis,
+                'title': {
+                    'text': r'\CCYLab{}',
+                    'font': {
+                        'size': 10,
+                    },                
+                },
+            },        
+        }
+
+        width_vol_lns_com = {
+            'type': 'scatter',
+            'x': range_lims,
+            'mode': 'lines',
+            'line': {
+                'color': 'gray',
+                'dash': 'dot',
+                'width': 1,
+            },        
+        }
+        plot_data = [
+            {
+                'x': range_lims,
+                'y': [BULK_ALPHA_ZR_COORD] * 2,
+                'mode': 'lines',
+                'line': {
+                    'width': 1.5,
+                    'color': 'gray',
+                }
+            },        
+            {
+                'x': coord_change_DFT_i['int_dist'],
+                'y': coord_change_DFT_i['coord'],
+                'name': f"{code} DFT",
+                'mode': 'markers',
+                'marker': {
+                    'symbol': 'circle-open',
+                    'color': 'black',
+                    'size': 4,
+                },
+            },
+            {
+                'x': coord_change_EAM_i['int_dist'],
+                'y': coord_change_EAM_i['coord'],
+                'name': f"{code} EAM",
+                'mode': 'markers',
+                'marker': {
+                    'symbol': 'circle',
+                    'color': DEFAULT_PLOTLY_COLORS[1],
+                    'size': 2.5,
+                },
+                'line': {
+                    'width': 1.5,
+                    'dash': '1px 1px',
+                    'color': DEFAULT_PLOTLY_COLORS[1],
+                }
+            },
+        ]
+        fig = graph_objects.FigureWidget(
+            data=plot_data,
+            layout=layout,
+        )    
+        fig.write_image(f'coord_change_{code}.svg')
+        figs.append(fig)
+
+    return figs
+
+def write_manuscript_figures_volume_change(DFT_sims, vol_change_DFT, vol_change_EAM, width_vol_change_lims=None):
+    
+    pixels_per_unit = 4.1    
+    figs = []
+    width_vol_change_lims = width_vol_change_lims or DEFAULT_WIDTH_VOLUME_CHANGE_LIMITS
+    gb_widths_DFT, gb_widths_EAM = get_predicted_GB_widths(DFT_sims, vol_change_DFT, vol_change_EAM, width_vol_change_lims)
+
+    for vol_change_DFT_i in vol_change_DFT:
+        
+        code = vol_change_DFT_i['structure_code']        
+        vol_change_EAM_i = [i for i in vol_change_EAM if i['structure_code'] == code][0]
+                    
+        range_mag = DFT_sims[code]['structure']['supercell'][2, 2,] / 2
+        range_lims = [-range_mag/2, range_mag/2]
+        
+        margins = {
+            'l': 30,
+            'r': 10,
+            't': 10,
+            'b': 35,
+        }        
+        plot_width = (pixels_per_unit * range_mag) + margins['l'] + margins['r']    
+        
+        _, gb_width_lower_DFT, gb_width_upper_DFT = gb_widths_DFT[code]
+        _, gb_width_lower_EAM, gb_width_upper_EAM = gb_widths_EAM[code]
+                
+        com_axis = {                
+            'linecolor': 'black',
+            'linewidth': 0.7,
+            'ticks': 'inside',
+            'tickwidth': 1,
+            'mirror': 'ticks',
+            'gridwidth': 1,
+            'showgrid': False,
+            'zeroline': False,
+            'tickformat': '.0f',
+        }    
+        
+        layout = {
+            'template': 'none',
+            'width': plot_width,
+            'showlegend': False,
+            'height': 145,
+            'margin': margins,
+            'xaxis': {
+                'dtick': 5,
+                'tickangle': 0,            
+                'range': range_lims,
+                'title': {
+                    'text': r'\volChangeXLab{}',
+                    'font': {
+                        #'size': 12,
+                    },
+                },
+                **com_axis,
+            },
+            'yaxis': {
+                'range': [-15, 20],
+                **com_axis,
+                'title': {
+                    'text': r'\volChangeYLab{}',
+                    'font': {
+                        #'size': 12,
+                    },                
+                },
+            },        
+        }
+        width_vol_lns_com = {
+            'type': 'scatter',
+            'x': range_lims,
+            'mode': 'lines',
+            'line': {
+                'color': 'gray',
+                'dash': 'dot',
+                'width': 1,
+            },        
+        }
+        plot_data = [
+            {                        
+                'y': [width_vol_change_lims[0], ] * 2,
+                **width_vol_lns_com,
+
+            },
+            {
+                'y': [width_vol_change_lims[1], ] * 2,
+                **width_vol_lns_com,
+            },        
+            {
+                'type': 'scatter',
+                'mode': 'lines',
+                'x': [gb_width_lower_DFT, ] * 2,
+                'y': layout['yaxis']['range'],
+                'line': {
+                    'color': 'black',
+                    'dash': 'solid',
+                    'width': 0.8,
+                }
+            },
+            {
+                'type': 'scatter',
+                'mode': 'lines',
+                'x': [gb_width_upper_DFT, ] * 2,
+                'y': layout['yaxis']['range'],
+                'line': {
+                    'color': 'black',
+                    'dash': 'solid',
+                    'width': 0.8,
+                }
+            },
+            {
+                'type': 'scatter',
+                'mode': 'lines',
+                'x': [gb_width_lower_EAM, ] * 2,
+                'y': layout['yaxis']['range'],
+                'line': {
+                    'color': DEFAULT_PLOTLY_COLORS[1],
+                    'dash': 'dot',
+                    'width': 0.8,
+                }
+            },
+            {
+                'type': 'scatter',
+                'mode': 'lines',
+                'x': [gb_width_upper_EAM, ] * 2,
+                'y': layout['yaxis']['range'],
+                'line': {
+                    'color': DEFAULT_PLOTLY_COLORS[1],
+                    'dash': 'dot',
+                    'width': 0.8,
+                }
+            },                         
+            {
+                'x': vol_change_DFT_i['int_dist'],
+                'y': vol_change_DFT_i['vol_change'],
+                'name': f"{code} DFT",
+                'mode': 'markers',
+                'marker': {
+                    'symbol': 'circle-open',
+                    'color': 'black',
+                    'size': 4,
+                },
+            },
+            {
+                'x': vol_change_EAM_i['int_dist'],
+                'y': vol_change_EAM_i['vol_change'],
+                'name': f"{code} EAM",
+                'mode': 'markers',
+                'marker': {
+                    'symbol': 'circle',
+                    'color': DEFAULT_PLOTLY_COLORS[1],
+                    'size': 2.5,
+                },
+                'line': {
+                    'width': 1.5,
+                    'dash': '1px 1px',
+                    'color': DEFAULT_PLOTLY_COLORS[1],
+                }
+            },
+        ]
+        fig = graph_objects.FigureWidget(
+            data=plot_data,
+            layout=layout,
+        )
+        fig.write_image(f'vol_change_{code}.svg')        
+        figs.append(fig)
+
+    return figs
+
+def write_manuscript_figures_interplanar_spacing(DFT_sims, int_spacing_data_DFT, int_spacing_data_EAM):
+    
+    pixels_per_unit = 4.1
+    figs = []
+    for int_space_DFT_i in int_spacing_data_DFT:
+        code = int_space_DFT_i['structure_code']
+        xrange = int_space_DFT_i['xrange']
+        bulk_val = int_space_DFT_i['bulk_val']
+        y_DFT = int_space_DFT_i['y']
+        
+        int_space_EAM_i = [i for i in int_spacing_data_EAM if i['structure_code'] == code][0]
+        y_EAM = int_space_EAM_i['y']
+        
+        range_mag = DFT_sims[code]['structure']['supercell'][2, 2,] / 2
+        
+        margins = {
+            'l': 45 if 'tw' in code else 38,
+            'r': 10,
+            't': 10,
+            'b': 35,
+        }        
+        plot_width = (pixels_per_unit * range_mag) + margins['l'] + margins['r']    
+        
+        com_axis = {                
+            'linecolor': 'black',
+            'linewidth': 0.7,
+            'ticks': 'inside',
+            'tickwidth': 1,
+            'mirror': 'ticks',
+            'gridwidth': 1,
+            'showgrid': False,
+            'zeroline': False,
+    #         'tickformat': '.0f',
+        }    
+        yrange = [0, 1.5] if 'tl' in code else [2.53, 2.77]
+        ytickfmt = '.1f' if 'tl' in code else '.2f'
+        ydtick = 0.5 if 'tl' in code else 0.1
+        ytick0 = 0.0 if 'tl' in code else 2.55
+        layout = {
+            'template': 'none',
+            'width': plot_width,
+            'showlegend': False,
+            'height': 145,
+            'margin': margins,
+            'xaxis': {
+                'tickangle': 0,            
+                'title': {
+                    'text': r'\IDXLab{}',
+                    'font': {
+                        #'size': 12,
+                    },
+                },
+                **com_axis,
+            },
+            'yaxis': {
+                'range': yrange,
+                'dtick': ydtick,
+                'tick0': ytick0,
+                **com_axis,
+                'tickformat': ytickfmt,
+                'title': {
+                    'text': r'\IDYLab{}',
+                    'font': {
+                        #'size': 12,
+                    },                
+                },
+            },        
+        }        
+        plot_data = [
+            {
+                'x': xrange,
+                'y': [bulk_val] * 2,
+                'cliponaxis': False,
+                'mode': 'lines',
+                'line': {
+                    'width': 1,
+                    'color': 'gray',
+                },      
+                'name': 'Bulk ({})'.format(code),
+            },        
+            {
+                'y': y_DFT,
+                'name': '{}'.format(code),
+                'mode': 'lines',
+                'line': {
+                    'width': 1,
+                    'color': 'black',
+                },            
+            },
+            {
+                'y': y_EAM,
+                'name': '{}'.format(code),
+                'mode': 'lines',
+                'line': {
+                    'width': 1.5,
+                    'color': 'orange',
+                    'dash': 'dot'
+                },
+            },        
+        ]
+        fig = graph_objects.FigureWidget(
+            data=plot_data,
+            layout=layout,
+        )
+        fig.write_image(f'int_spacing_{code}.svg')
+        figs.append(fig)
+        
+    return figs
+
+
+def write_manuscript_figure_E_GB_DFT_vs_EAM(E_GB_EAM, E_GB_DFT, latex_labels=False):
+
+    plt_x_DFT_tlA = []
+    plt_y_EAM_tlA = []
+    plt_x_DFT_tlB = []
+    plt_y_EAM_tlB = []
+    plt_x_DFT_tw = []
+    plt_y_EAM_tw = []
+    
+    annots = []
+
+    annot_offsets = {
+        's7-tw': [-20, 0],
+        's13-tw': [0, 30],
+        's19-tw': [0, -30],
+        's7-tlA': [0, 0],
+        's13-tlA': [0, 0],
+        's19-tlA': [0, 40],
+        's31-tlA': [20, 0],
+        's7-tlB': [0, -30],
+    }
+    annots_show_line = {
+        's7-tw': True,
+        's13-tw': True,
+        's19-tw': True,
+        's7-tlA': False,
+        's13-tlA': False,
+        's19-tlA': False,
+        's31-tlA': False,
+        's7-tlB': False,
+    }
+    annots_shift = {
+        's7-tw': [0, 0],
+        's13-tw': [0, 0],
+        's19-tw': [0, 0],
+        's7-tlA': [0, -15],
+        's13-tlA': [0, 13],
+        's19-tlA': [0, -15],
+        's31-tlA': [16, -1],
+        's7-tlB': [-4, 16],
+    }
+
+    for idx, (key, GB_energy) in enumerate(E_GB_DFT.items()):
+        x = GB_energy
+        y = E_GB_EAM[key]
+        
+        key_short = key[:-3]
+        label = key_short
+        
+        if '-tlA' in key_short:
+            plt_x_DFT_tlA.append(x)
+            plt_y_EAM_tlA.append(y)
+        elif 'tlB' in key_short:
+            plt_x_DFT_tlB.append(x)
+            plt_y_EAM_tlB.append(y)
+        elif '-tw' in key_short:
+            plt_x_DFT_tw.append(x)
+            plt_y_EAM_tw.append(y)
+        
+        sigma = key_short.split('-')[0].lstrip('s')
+        
+        annot_i = {
+            'text': key_short if not latex_labels else f'\\sig{{{sigma}}}',
+            'arrowhead': 0,
+            'standoff': 2,
+            'arrowwidth': 0.5,
+            'showarrow': annots_show_line[key_short],
+            'font': {'size': 7,},
+            'xshift': annots_shift[key_short][0],
+            'yshift': annots_shift[key_short][1],
+            'x': x,
+            'y': y,
+            'ax': annot_offsets[key_short][0],
+            'ay': annot_offsets[key_short][1],            
+        }        
+        if key_short == 's13-tw': 
+            annot_i['font']['size'] = 9
+        annots.append(annot_i)    
+
+    plt_data = [
+        {
+            'type': 'scatter',
+            'x': plt_x_DFT_tlA,
+            'y': plt_y_EAM_tlA,
+            'mode': 'markers+text',
+            'showlegend': False,
+            'marker': {
+                'color': 'black',
+                'symbol': 'cross',
+                'size': 6,
+            },
+        },
+        {
+            'type': 'scatter',
+            'x': plt_x_DFT_tlB,
+            'y': plt_y_EAM_tlB,
+            'mode': 'markers+text',
+            'showlegend': False,
+            'marker': {
+                'color': 'black',
+                'symbol': 'cross-open',
+                'size': 6,
+            },            
+        },
+        {
+            'type': 'scatter',
+            'x': plt_x_DFT_tw,
+            'y': plt_y_EAM_tw,
+            'mode': 'markers+text',
+            'showlegend': False,
+            'marker': {
+                'color': 'navy',
+                'symbol': 'circle',
+                'size': 6,
+            },            
+        },        
+    ]
+
+    MIN_RANGE = 0
+    MAX_RANGE = 0.9
+    com_axis = {
+        'range': [MIN_RANGE, MAX_RANGE],
+        'dtick': 0.2,
+        'linecolor': 'black',
+        'linewidth': 0.7,
+        'ticks': 'inside',
+        'tickwidth': 1,
+        'mirror': 'ticks',
+        'gridwidth': 1,
+        'showgrid': False,
+        'zeroline': False,
+        'tickformat': '.1f',
+    }
+    layout = {
+        'width': 180,
+        'height': 180,
+        'template': 'none',
+        'yaxis': {
+            'title': {
+                'text': 'E_GB (EAM) / Jm^-2' if not latex_labels else r'\en{GB} \text{(EAM)}/ \jpermsq{}',
+                'font': {
+                    'size': 8,
+                },
+            },
+            'scaleanchor': 'x',
+            **com_axis,
+        },
+        'xaxis': {
+            'title': {
+                'text': 'E_GB (DFT-PBE) / Jm^-2' if not latex_labels else r'\en{GB} \text{(DFT-PBE)}/ \jpermsq{}',
+                'font': {
+                    'size': 8,
+                },
+            },
+            **com_axis,
+        },
+        'shapes': [
+            {
+                'type': 'line',
+                'xref': 'x',
+                'yref': 'y',
+                'x0': MIN_RANGE,
+                'y0': MIN_RANGE,
+                'x1': MAX_RANGE,
+                'y1': MAX_RANGE,
+                'line': {'color': 'gray'},
+                'layer': 'below',
+            },
+        ],
+        'annotations': annots,
+        'margin': {
+            't': 10,
+            'r': 10,
+            'b': 40,
+            'l': 40,
+        }
+    }
+    fig = graph_objects.FigureWidget(data=plt_data, layout=layout)
+    fig.write_image('E_GB_EAM_vs_DFT.svg')
+
+    return fig
