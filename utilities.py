@@ -19,6 +19,7 @@ from atomistic.atomistic import AtomisticSimulation
 from atomistic.bicrystal import Bicrystal, atomistic_simulation_from_bicrystal_parameters
 from castep_parse import (read_cell_file, read_castep_file, read_geom_file,
                           read_relaxation, merge_cell_data, merge_geom_data)
+from lammps_parse import read_lammps_output
 
 DEFAULT_DIRS_LIST_PATH = 'simulation_directories.yml'
 DEF_LAMMPS_FILE = 'parameters/lammps_parameters.yml'
@@ -131,6 +132,8 @@ def get_structure_paths(dirs_list_path=DEFAULT_DIRS_LIST_PATH):
     with Path(dirs_list_path).open() as handle:
         sims_dirs = YAML().load(handle)
 
+    print(dict(sims_dirs['simulation_directories']['dft_sims']))
+
     paths = sims_dirs['simulation_directories']
     for structure_code in paths:
         paths[structure_code] = Path(sims_dirs['root_directory'], paths[structure_code])
@@ -219,18 +222,12 @@ def get_castep_outputs(structure_code):
 def get_simulated_bicrystal(structure_code, opt_idx=-1, parameters_file=DEF_PARAMS_FILE):
     'Construct a Bicrystal from the final structure in a simulation.'
 
-    yaml = YAML()
-    with Path(parameters_file).open(encoding='utf-8') as handle:
-        parameters = yaml.load(handle)
-
+    parameters = get_structural_parameter_data(parameters_file)
     sim_outputs = get_castep_outputs(structure_code)
 
     species = sim_outputs['geom']['species']
     supercell = sim_outputs['geom']['iterations'][opt_idx]['cell']
     atoms = sim_outputs['geom']['iterations'][opt_idx]['atoms']
-
-    srt_idx1 = np.lexsort(atoms)
-    ss2_atoms_1 = atoms[:, srt_idx1]
 
     bicrystal = Bicrystal.from_atoms(
         atoms=atoms,
@@ -241,9 +238,6 @@ def get_simulated_bicrystal(structure_code, opt_idx=-1, parameters_file=DEF_PARA
         overlap_tol=parameters['overlap_tol'],
         wrap=True,
     )
-
-    srt_idx2 = np.lexsort(bicrystal.atoms.coords)
-    ss2_atoms_2 = bicrystal.atoms.coords[:, srt_idx2]
 
     sup_type = structure_code.split('-')[2]
     if sup_type == 'b':
@@ -257,9 +251,7 @@ def get_simulated_bicrystal(structure_code, opt_idx=-1, parameters_file=DEF_PARA
 def get_simulation(structure_code, parameters_file=DEF_PARAMS_FILE):
     'Get an AtomisticSimulation object from CASTEP simulation output files.'
 
-    yaml = YAML()
-    with Path(parameters_file).open(encoding='utf-8') as handle:
-        parameters = yaml.load(handle)
+    parameters = get_structural_parameter_data(parameters_file)
 
     cstp_file_bytes = b''
     cell_file_bytes = b''
@@ -410,6 +402,8 @@ def get_simulation(structure_code, parameters_file=DEF_PARAMS_FILE):
     elif sup_type == 'fs':
         meta['supercell_type'] = ['surface', 'surface_bicrystal']
 
+    iodine_idx = np.where(species == 'I')[0]
+
     sim = atomistic_simulation_from_bicrystal_parameters(
         all_atoms=atoms,
         all_supercells=supercell,
@@ -422,12 +416,8 @@ def get_simulation(structure_code, parameters_file=DEF_PARAMS_FILE):
         wrap=True,
     )
 
-    # sim = AtomisticSimulation(
-    #     structure=bicrystal,
-    #     data=data,
-    #     atom_displacements=np.copy(atoms - atoms[0]),
-    #     supercell_displacements=np.copy(supercell - supercell[0]),
-    # )
+    iodine_idx_sim = np.where(sim.structure.atoms.species == 'I')[0]
+
 
     return sim
 
@@ -483,9 +473,16 @@ def get_castep_parameters(num_atoms, parameters_file=DEF_CASTEP_FILE):
     return params
 
 
-def make_structure(structure_code, configuration='base', lattice_parameters='dft',
+def get_structural_parameter_data(parameters_file=DEF_PARAMS_FILE):
+    yaml = YAML()
+    with Path(parameters_file).open(encoding='utf-8') as handle:
+        parameters = yaml.load(handle)
+    return parameters
+
+
+def make_structure(structure_code, configuration='base', method='dft',
                    parameters_file=DEF_PARAMS_FILE,
-                   dirs_list_path=DEFAULT_DIRS_LIST_PATH):
+                   dirs_list_path=DEFAULT_DIRS_LIST_PATH, shift=None, expansion=None):
     """Construct the AtomisticStructure object from parameters.
 
 
@@ -499,24 +496,29 @@ def make_structure(structure_code, configuration='base', lattice_parameters='dft
         file.
     configuration : str
         One of "base", "sized" or "minimum_energy".
-    lattice_parameters : str
+    method : str
         One of "dft" or "eam". Optimised lattice parameter depend on the method of atomic
-        relaxation.
+        relaxation. For the minimum energy structures, the relative shift and GB expansion
+        also differ between methods.
     parameters_file : str or Path, optional
         Path to the YAML file containing structure parameters.
     dirs_list_path : str or Path, optional
         Path to the YAML file containing directories for simulation data.
+    shift : list of length two, optional
+        In-boundary-plane translation to apply (overrides value in parameter file) if
+        configuration is "minimum_energy".
+    expansion : float, optional
+        GB expansion to apply (overrides value in parameter file) if configuration is
+        "minimum_energy".
 
     """
 
-    yaml = YAML()
-    with Path(parameters_file).open(encoding='utf-8') as handle:
-        parameters = yaml.load(handle)
+    parameters = get_structural_parameter_data(parameters_file)
 
     sigma_code, gb_type, sup_type = structure_code.split('-')
     gb_code = '{}-{}'.format(sigma_code, gb_type)
 
-    crystal_structure = parameters['crystal_structures'][lattice_parameters]
+    crystal_structure = parameters['crystal_structures'][method]
     csl_vecs = parameters['csl_vecs'][sigma_code]
     box_csl = parameters['box_csl'][gb_type]
 
@@ -533,12 +535,23 @@ def make_structure(structure_code, configuration='base', lattice_parameters='dft
     if sup_type == 'gb':
 
         if configuration == 'minimum_energy':
+
+            shift = shift if shift is not None else parameters['relative_shift'][method][gb_code]
+            if expansion is not None:
+                expansion = [{
+                    'thickness': expansion,
+                    'func': 'sigmoid',
+                    'sharpness': 1,
+                }]
+            else:
+                expansion = [parameters['boundary_vac'][method][gb_code]]
+
             struct_params.update({
                 'relative_shift': {
-                    'shift': parameters['relative_shift'][gb_code],
+                    'shift': shift,
                     'crystal_idx': 0,
                 },
-                'boundary_vac': [parameters['boundary_vac'][gb_code]],
+                'boundary_vac': expansion,
             })
 
         struct_params.update({
@@ -585,53 +598,57 @@ def decode_structure_info(structure_code):
     return info
 
 
-def load_structures(json_path='dft_sims.json'):
-    'Load the structures and energies from a JSON file.'
+def load_structures(method, json_path):
+    'Load the energies (and structures in the case of method="DFT") from a JSON file.'
 
     with Path(json_path).open() as handle:
-        dft_sims = json.load(handle)
+        sims_data = json.load(handle)
 
-    for structure_code in dft_sims:
+    for structure_code in sims_data:
 
-        dft_sims[structure_code]['structure']['atoms'] = np.array(
-            dft_sims[structure_code]['structure']['atoms'])
+        sims_data[structure_code]['structure']['atoms'] = np.array(
+            sims_data[structure_code]['structure']['atoms'])
 
-        dft_sims[structure_code]['structure']['supercell'] = np.array(
-            dft_sims[structure_code]['structure']['supercell'])
+        sims_data[structure_code]['structure']['supercell'] = np.array(
+            sims_data[structure_code]['structure']['supercell'])
 
-        dft_sims[structure_code]['structure']['species'] = np.array(
-            dft_sims[structure_code]['structure']['species'])
+        sims_data[structure_code]['structure']['species'] = np.array(
+            sims_data[structure_code]['structure']['species'])
 
-        dft_sims[structure_code]['structure']['atom_site_geometries'] = unjsonified_site_geometries(
-            dft_sims[structure_code]['structure']['atom_site_geometries']
+        sims_data[structure_code]['structure']['atom_site_geometries'] = unjsonified_site_geometries(
+            sims_data[structure_code]['structure']['atom_site_geometries']
         )
 
-        if 'final_structure' in dft_sims[structure_code]:
-            dft_sims[structure_code]['final_structure']['atoms'] = np.array(
-                dft_sims[structure_code]['final_structure']['atoms'])
+        if 'final_structure' in sims_data[structure_code]:
+            sims_data[structure_code]['final_structure']['atoms'] = np.array(
+                sims_data[structure_code]['final_structure']['atoms'])
 
-            dft_sims[structure_code]['final_structure']['supercell'] = np.array(
-                dft_sims[structure_code]['final_structure']['supercell'])
+            sims_data[structure_code]['final_structure']['supercell'] = np.array(
+                sims_data[structure_code]['final_structure']['supercell'])
 
-            dft_sims[structure_code]['final_structure']['species'] = np.array(
-                dft_sims[structure_code]['final_structure']['species'])
+            sims_data[structure_code]['final_structure']['species'] = np.array(
+                sims_data[structure_code]['final_structure']['species'])
 
-            dft_sims[structure_code]['final_structure']['atom_site_geometries'] = unjsonified_site_geometries(
-                dft_sims[structure_code]['final_structure']['atom_site_geometries']
+            sims_data[structure_code]['final_structure']['atom_site_geometries'] = unjsonified_site_geometries(
+                sims_data[structure_code]['final_structure']['atom_site_geometries']
             )
 
-    return dft_sims
+    return sims_data
 
 
-def export_structures(json_path='dft_sims.json', log_path='collation_log.txt', exclude_structures=None,
-                      include_structures=None):
+def export_structures(method, json_path=None, log_path='collation_log.txt',
+                      exclude_structures=None, include_structures=None):
     'Parse and export the structures and energies to a JSON file.'
 
-    dft_sims = collate_structures(log_path, exclude_structures=exclude_structures,
-                                  include_structures=include_structures)
+    method = method.upper()
+    if not json_path:
+        json_path = f'{method}_sims.json'
+
+    sims_data = collate_structures(method, log_path, exclude_structures=exclude_structures,
+                                   include_structures=include_structures)
 
     with Path(json_path).open('w') as handle:
-        json.dump(dft_sims, handle, indent=2, sort_keys=True)
+        json.dump(sims_data, handle, indent=2, sort_keys=True)
 
     return json_path
 
@@ -679,10 +696,22 @@ def unjsonified_site_geometries(site_geoms):
     return out
 
 
-def collate_structures(log_path='collation_log.txt', exclude_structures=None, include_structures=None):
+def collate_structures(method, log_path='collation_log.txt', exclude_structures=None,
+                       include_structures=None):
+    """Collate final energies from all EAM or DFT simulations For DFT simulations, 
+    detailed structural information is also included.
 
-    # Here we should invoke get_simulation to get an AtomisticSimulation object; and then
-    # save info from that object in JSON format.
+    Parameters
+    ----------
+    method : str "EAM" or "DFT"
+    ...
+
+    Returns
+    -------
+    sims_data : dict of (str : dict)
+        For each structure code, a dict containing simulation results.
+
+    """
 
     if not exclude_structures:
         exclude_structures = []
@@ -693,10 +722,19 @@ def collate_structures(log_path='collation_log.txt', exclude_structures=None, in
     log_path = Path(log_path)
 
     count = 0
-    dft_sims = {}
+    sims_data = {}
     t1 = time()
 
-    for i in Path('data/dft_sims').glob('*'):
+    method = method.lower()
+    if method == 'dft':
+        data_path = 'data/dft_sims'
+    elif method == 'eam':
+        data_path = 'data/eam_sims'
+
+    for i in Path(data_path).glob('*'):
+
+        # Here we should invoke get_simulation to get an AtomisticSimulation object; and
+        # then save info from that object in JSON format.
 
         structure_code = i.name
 
@@ -711,60 +749,123 @@ def collate_structures(log_path='collation_log.txt', exclude_structures=None, in
 
         print('________{:_<80s}'.format(structure_code))
 
-        sim = get_simulation(structure_code)
-
         structure_info = decode_structure_info(structure_code)
-        structure_info.update({
-            'area': sim.structure.boundary_area,
-            'num_atoms': sim.structure.num_atoms,
-        })
-        if structure_info['supercell_type'] == 'gb':
+
+        if method == 'dft':
+
+            sim = get_simulation(structure_code)
+
             structure_info.update({
-                'bicrystal_thickness': sim.structure.bicrystal_thickness,
+                'area': sim.structure.boundary_area,
+                'num_atoms': sim.structure.num_atoms,
             })
+            if structure_info['supercell_type'] == 'gb':
+                structure_info.update({
+                    'bicrystal_thickness': sim.structure.bicrystal_thickness,
+                })
 
-        initial_structure = sim.get_step(0, atom_site_geometries=True)['structure']
-        initial_structure.swap_crystal_sites()
-        sim_dict = {
-            'structure_info': structure_info,
-            'structure': {
-                'atoms': initial_structure.atoms.coords.tolist(),
-                'supercell': initial_structure.supercell.tolist(),
-                'species': initial_structure.atoms.species.tolist(),
-                'atom_site_geometries': jsonified_site_geometries(
-                    initial_structure.atom_site_geometries),
-            },
-            'data': {
-                'final_zero_energy': [sim.data['final_zero_energy'][0]],
-            },
-        }
-
-        if sim.num_steps > 1:
-            sim_dict['data']['final_zero_energy'].append(
-                sim.data['final_zero_energy'][-1])
-            final_structure = sim.get_step(-1, atom_site_geometries=True)['structure']
-            final_structure.swap_crystal_sites()
-            sim_dict.update({
-                'final_structure': {
-                    'atoms': final_structure.atoms.coords.tolist(),
-                    'supercell': final_structure.supercell.tolist(),
-                    'species': final_structure.atoms.species.tolist(),
+            initial_structure = sim.get_step(0, atom_site_geometries=True)['structure']
+            initial_structure.swap_crystal_sites()
+            sim_dict = {
+                'structure_info': structure_info,
+                'structure': {
+                    'atoms': initial_structure.atoms.coords.tolist(),
+                    'supercell': initial_structure.supercell.tolist(),
+                    'species': initial_structure.atoms.species.tolist(),
                     'atom_site_geometries': jsonified_site_geometries(
-                        final_structure.atom_site_geometries),
-                }
-            })
+                        initial_structure.atom_site_geometries),
+                },
+                'data': {
+                    'final_zero_energy': [sim.data['final_zero_energy'][0]],
+                },
+            }
 
-        dft_sims.update({structure_code: sim_dict})
+            if sim.num_steps > 1:
+                sim_dict['data']['final_zero_energy'].append(
+                    sim.data['final_zero_energy'][-1])
+                final_structure = sim.get_step(-1, atom_site_geometries=True)['structure']
+                final_structure.swap_crystal_sites()
+                sim_dict.update({
+                    'final_structure': {
+                        'atoms': final_structure.atoms.coords.tolist(),
+                        'supercell': final_structure.supercell.tolist(),
+                        'species': final_structure.atoms.species.tolist(),
+                        'atom_site_geometries': jsonified_site_geometries(
+                            final_structure.atom_site_geometries),
+                    }
+                })
+
+        elif method == 'eam':
+
+            lammps_out = read_lammps_output(dir_path=i)
+
+            initial_structure = Bicrystal.from_atoms(
+                atoms=lammps_out['atoms'][0],
+                species=np.array(['Zr'] * lammps_out['atoms'][0].shape[1]),
+                supercell=lammps_out['supercell'][0],
+                non_boundary_idx=2,
+            )
+            initial_structure.set_atom_site_geometries()  # are atom site geometries then wrong?
+            initial_structure.swap_crystal_sites()
+
+            structure_info.update({
+                'area': initial_structure.boundary_area,
+                'num_atoms': initial_structure.num_atoms,
+            })
+            if structure_info['supercell_type'] == 'gb':
+                structure_info.update({
+                    'bicrystal_thickness': initial_structure.bicrystal_thickness,
+                })
+
+            sim_dict = {
+                'structure_info': structure_info,
+                'structure': {
+                    'atoms': initial_structure.atoms.coords.tolist(),
+                    'supercell': initial_structure.supercell.tolist(),
+                    'species': initial_structure.atoms.species.tolist(),
+                    'atom_site_geometries': jsonified_site_geometries(
+                        initial_structure.atom_site_geometries),
+                },
+                'data': {
+                    'final_zero_energy': [lammps_out['final_energy'][0]],
+                },
+            }
+
+            if lammps_out['atoms'].shape[0] > 1:
+                final_structure = Bicrystal.from_atoms(
+                    atoms=lammps_out['atoms'][-1],
+                    species=np.array(['Zr'] * lammps_out['atoms'][0].shape[1]),
+                    supercell=lammps_out['supercell'][0],
+                    non_boundary_idx=2,
+                )
+                final_structure.set_atom_site_geometries()
+                final_structure.swap_crystal_sites()  # are atom site geometries then wrong?
+
+                sim_dict['data']['final_zero_energy'].append(
+                    lammps_out['final_energy'][-1])
+
+                sim_dict.update({
+                    'final_structure': {
+                        'atoms': final_structure.atoms.coords.tolist(),
+                        'supercell': final_structure.supercell.tolist(),
+                        'species': final_structure.atoms.species.tolist(),
+                        'atom_site_geometries': jsonified_site_geometries(
+                            final_structure.atom_site_geometries),
+                    }
+                })
+
+        sims_data.update({structure_code: sim_dict})
         print()
 
     t2 = time()
     t_mins = (t2 - t1) / 60
 
     print('{:_<88}'.format(''))
-    print('Collated results for {} structures in {:.2f} minutes.'.format(count, t_mins))
+    print(f'Collated {method.upper()} results for {count} structures in '
+          f'{t_mins:.2f} minutes.')
     print('{:_<88}'.format(''))
 
-    return dft_sims
+    return sims_data
 
 
 def get_interplanar_spacing_data(DFT_sims, structure_code, step, add_one, bulk_val, average_by=None):
