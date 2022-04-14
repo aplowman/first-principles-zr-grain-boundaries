@@ -1,6 +1,6 @@
 numpy
 atomistic==0.3.4
-castep-parse==0.2.2
+castep-parse==0.2.3
 lammps-parse==0.1.0
 ruamel.yaml
 autopep8
