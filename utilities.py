@@ -24,6 +24,7 @@ from castep_parse import (
     read_cell_file,
     read_castep_file,
     read_geom_file,
+    read_den_fmt,
     read_relaxation,
     merge_cell_data,
     merge_geom_data,
@@ -2052,3 +2053,67 @@ def write_manuscript_figure_E_GB_DFT_vs_EAM(E_GB_EAM, E_GB_DFT, latex_labels=Fal
     fig.write_image("E_GB_EAM_vs_DFT.svg")
 
     return fig
+
+
+def get_binned_structures(
+    structure_codes, densities_base_path=None, den_file=None, decompress=True
+):
+    if not densities_base_path:
+        densities_base_path = "data/dft_sims"
+    if not den_file:
+        den_file = "sim.den_fmt" if not decompress else "sim.den_fmt.xz"
+
+    out = {}
+    for i in structure_codes:
+
+        bc = get_simulated_bicrystal(i, opt_idx=-1)
+        bc.set_voronoi_tessellation()
+        bc.set_bond_regions(method="polyhedron")
+
+        den_fmt_path = Path(densities_base_path).joinpath(i, den_file)
+        if decompress:
+            den_fmt_path = decompress_file(den_fmt_path)
+
+        density_dat = read_den_fmt(den_fmt_path)
+
+        print('Adding volumetric data: "charge_density"...')
+        bc.add_volumetric_data(
+            "charge_density", density_dat["grid_size"], density_dat["density"]
+        )
+
+        # print('Binning volumetric data "charge_density" using method "grid"...')
+        # bc.bin_volumetric_data(name='charge_density', method='grid', grid_size=[1, 1, bc.num_atoms])
+        # bc.bin_volumetric_data(name='charge_density', method='grid', grid_size=[1, 1, 1])
+
+        print(
+            'Binning volumetric data "charge_density" using method "atoms_voronoi"...'
+        )
+        bc.bin_volumetric_data(name="charge_density", method="atoms_voronoi")
+
+        # print('Binning volumetric data "charge_density" using method "bonds_polyhedron"...')
+        # bc.bin_volumetric_data(name='charge_density', method='bonds_polyhedron')
+
+        out.update({i: bc})
+
+    return out
+
+
+def get_atoms_num_electrons_by_voronoi(bicrystal, crystal_idx=0):
+    """By summing the number of electrons found in atom Voronoi region, count
+    the number of electrons associated with each atom in a bicrystal crystal.
+
+    """
+
+    crystal_atoms = np.where(bicrystal.atoms.crystal_idx == crystal_idx)[0]
+    num_grid_points = np.product(
+        bicrystal.volumetric_data["charge_density"]["grid_size"]
+    )
+    num_electrons_by_atom = {
+        atom_idx: (binned_data["bin_value"] / num_grid_points)
+        for atom_idx, binned_data in enumerate(
+            bicrystal.tessellation.binned_volumetric_data["charge_density"]
+        )
+        if atom_idx in crystal_atoms
+    }
+
+    return num_electrons_by_atom
