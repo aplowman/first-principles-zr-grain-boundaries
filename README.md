@@ -6,7 +6,7 @@
 
 This repository demonstrates the supporting Python code and input/output data files for the following manuscripts:
 
-1. A. J. Plowman and Christopher P. Race, 'A First Principles Study of Zirconium Grain Boundaries'. Journal of Nuclear Materials 568 (1 September 2022): 153853. https://doi.org/10.1016/j.jnucmat.2022.153853.
+1. A. J. Plowman and Christopher P. Race, '**A First Principles Study of Zirconium Grain Boundaries**'. Journal of Nuclear Materials 568 (1 September 2022): 153853. https://doi.org/10.1016/j.jnucmat.2022.153853.
 2. A. J. Plowman and Christopher P. Race, '**A Density Functional Theory Study of Embrittlement of Zirconium Grain Boundaries by Fission Products**', in preparation.
 
 The easiest way to explore both the code and data is to use Binder, by clicking the link above.
